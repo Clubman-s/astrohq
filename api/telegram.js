@@ -52,6 +52,7 @@ module.exports = async (req, res) => {
 
     if (existingProfile) {
       if (!userMessage.match(/1|2|3|4|5/)) {
+        // Если тема ещё не выбрана, запрашиваем её
         const reply = `Ваши данные уже сохранены! Пожалуйста, уточните, на какую тему вы хотите получить прогноз? Вот несколько вариантов:
         1. Семья и отношения
         2. Здоровье
@@ -150,6 +151,23 @@ module.exports = async (req, res) => {
           }]);
 
           await bot.sendMessage(chatId, reply);
+
+          // Теперь запросим тему
+          const topicReply = `Пожалуйста, уточните, на какую тему вы хотите получить прогноз? Вот несколько вариантов:
+          1. Семья и отношения
+          2. Здоровье
+          3. Финансовое положение
+          4. Карьера и работа
+          5. Личностный рост`;
+
+          // Сохраняем сообщение от бота с запросом темы
+          await supabase.from('messages').insert([{
+            session_id: chatId,
+            role: 'bot',
+            content: topicReply,
+          }]);
+
+          await bot.sendMessage(chatId, topicReply);
         }
       }
     }
