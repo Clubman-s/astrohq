@@ -79,35 +79,7 @@ module.exports = async (req, res) => {
       } else {
         // Если пользователь выбрал тему, продолжаем работу с прогнозом
         await bot.sendMessage(chatId, 'Спасибо за выбор темы! Готовлю ваш прогноз...');
-
-        const topic = userMessage.trim();
-        const { birthdate, birthtime, city } = existingProfile;
-        const prompt = `
-        Пользователь с датой рождения ${birthdate}, временем рождения ${birthtime} и местом рождения ${city} интересуется прогнозом на тему "${topic}". 
-        Проанализируй эту информацию и подготовь персонализированный прогноз для него. Тема: ${topic}.
-        `;
-        try {
-          const response = await openai.chat.completions.create({
-            model: 'gpt-4',
-            messages: [
-              { role: 'user', content: prompt }
-            ]
-          });
-
-          const forecast = response.choices[0].message.content;
-
-          // Сохраняем прогноз от бота в Supabase
-          await supabase.from('messages').insert([{
-            session_id: chatId,
-            role: 'bot',
-            content: forecast,
-          }]);
-
-          await bot.sendMessage(chatId, forecast);
-        } catch (error) {
-          console.error('Ошибка при генерации прогноза:', error);
-          await bot.sendMessage(chatId, 'Что-то пошло не так, не удалось сгенерировать прогноз.');
-        }
+        // Здесь будет логика для формирования прогноза на основе выбранной темы
       }
     } else {
       // Если профиль не найден, продолжаем запрашивать данные
