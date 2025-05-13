@@ -5,19 +5,6 @@ const { supabase } = require('../lib/supabase');
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const OPENAI_KEY = process.env.OPENAI_KEY;
 
-const systemPrompt = `
-Ты — София, эксперт по астрологии с 8-летним опытом.
-Стиль общения: профессиональный, но дружелюбный.
-Запрещено: упоминать, что ты ИИ или используешь базу данных.
-Отвечай кратко, но полно, не углубляясь в теории. Используй конкретные примеры и рекомендации, основанные на астрологии.
-`;
-
-// Получаем данные пользователя, такие как дата рождения
-const getPersonalizedPrompt = (birthdate) => {
-  // Пример: можно использовать данные для определения астрологической информации, если нужно
-  return `С учетом вашего дня рождения (${birthdate}), я предлагаю рассмотреть следующие рекомендации по вашей ситуации...`;
-};
-
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).end();
@@ -31,28 +18,55 @@ module.exports = async (req, res) => {
   }
 
   const chatId = message.chat.id.toString();
-  const userMessage = message.text;
+  const userMessage = message.text.trim();
 
   const openai = new OpenAI({ apiKey: OPENAI_KEY });
   const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
 
   try {
-    // 💾 Сохраняем сообщение пользователя в Supabase
-    console.log('💬 Пытаемся сохранить сообщение в Supabase:', {
-      session_id: chatId,
-      role: 'user',
-      content: userMessage
-    });
+    // 🧠 Проверяем наличие профиля
+    const { data: profile, error: profileError } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('chat_id', chatId)
+      .single();
 
-    const insertUser = await supabase.from('messages').insert([
+    // 📌 Если профиля нет
+    if (!profile || profileError) {
+      // 🗓 Проверяем, ввёл ли пользователь дату рождения
+      const dateRegex = /^(\d{2})\.(\d{2})\.(\d{4})$/;
+      const match = userMessage.match(dateRegex);
+
+      if (!match) {
+        await bot.sendMessage(
+          chatId,
+          '✨ Привет! Чтобы составить астрологический разбор, напиши, пожалуйста, свою дату рождения в формате ДД.ММ.ГГГГ (например, 13.05.1985).'
+        );
+        return res.status(200).end();
+      }
+
+      // ✅ Если ввёл дату — сохраняем
+      const formattedDate = `${match[3]}-${match[2]}-${match[1]}`;
+
+      await supabase.from('user_profiles').insert([
+        {
+          chat_id: chatId,
+          birthdate: formattedDate,
+        },
+      ]);
+
+      await bot.sendMessage(chatId, '🌟 Спасибо! Теперь задай любой вопрос — и я постараюсь дать тебе персонализированный ответ.');
+      return res.status(200).end();
+    }
+
+    // 💾 Сохраняем сообщение пользователя в Supabase
+    await supabase.from('messages').insert([
       {
         session_id: chatId,
         role: 'user',
         content: userMessage,
-      }
+      },
     ]);
-
-    console.log('📝 Результат вставки user:', insertUser);
 
     // 📥 Загружаем историю из Supabase
     const { data: history, error } = await supabase
@@ -64,19 +78,21 @@ module.exports = async (req, res) => {
 
     if (error) {
       console.error('❗ Ошибка при загрузке истории:', error);
-    } else {
-      console.log('📜 История загружена:', history);
     }
 
-    // Проверяем, есть ли в сообщении дата рождения, если да - добавляем персонализированный prompt
-    const birthdate = userMessage.match(/(\d{2})\.(\d{2})\.(\d{4})/); // пример формата даты: 12.12.1990
-    const personalizedPrompt = birthdate ? getPersonalizedPrompt(birthdate[0]) : '';
+    // ✨ Формируем systemPrompt с датой рождения
+    const systemPrompt = `
+Ты — София, профессиональный астролог с многолетним опытом. 
+Дата рождения пользователя: ${profile.birthdate}. 
+Используй ведическую и западную астрологию для анализа личности, жизненных периодов, судьбоносных событий. 
+Говори уверенно, избегай общих фраз и водянистости. 
+Объясняй всё простыми словами, можно немного с душой и юмором 🌟
+`;
 
     const messages = [
       { role: 'system', content: systemPrompt },
       ...(history || []),
       { role: 'user', content: userMessage },
-      { role: 'system', content: personalizedPrompt }, // добавляем персонализированное обращение, если дата есть
     ];
 
     // 🤖 Запрашиваем ответ у OpenAI
@@ -89,21 +105,19 @@ module.exports = async (req, res) => {
     const reply = response.choices[0].message.content;
 
     // 💾 Сохраняем ответ Софии в Supabase
-    const insertAssistant = await supabase.from('messages').insert([
+    await supabase.from('messages').insert([
       {
         session_id: chatId,
         role: 'assistant',
         content: reply,
-      }
+      },
     ]);
-
-    console.log('🤖 Результат вставки assistant:', insertAssistant);
 
     await bot.sendMessage(chatId, reply);
     res.status(200).end();
   } catch (err) {
     console.error('❌ GPT Ошибка:', err);
-    await bot.sendMessage(chatId, '⚠️ София временно недоступна. Попробуйте позже.');
+    await bot.sendMessage(chatId, '⚠️ София временно недоступна. Попробуй позже.');
     res.status(200).end();
   }
 };
