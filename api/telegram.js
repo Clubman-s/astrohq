@@ -26,24 +26,6 @@ module.exports = async (req, res) => {
   const openai = new OpenAI({ apiKey: OPENAI_KEY });
   const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
 
-  const timestamp = new Date().toISOString();  // Получаем текущую дату и время в формате ISO
-
-  // Функция для записи сообщения в таблицу messages
-  async function saveMessageToDb(sessionId, role, content) {
-    const { error } = await supabase
-      .from('messages')
-      .insert([{
-        session_id: sessionId,
-        role: role,
-        content: content,
-        timestamp: timestamp
-      }]);
-
-    if (error) {
-      console.error('Ошибка при сохранении сообщения:', error);
-    }
-  }
-
   try {
     // 1. Проверяем наличие профиля в базе
     const { data: existingProfile, error: profileError } = await supabase
@@ -58,18 +40,22 @@ module.exports = async (req, res) => {
       const dateMatch = userMessage.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
       
       if (!dateMatch) {
-        const greetingMessage = `Здравствуйте! Я — София, ваш астрологический помощник. 
+        await bot.sendMessage(chatId, `Здравствуйте! Я — София, ваш астрологический помощник. 
 Для составления персонального прогноза мне потребуются:
 1. Дата рождения (в формате ДД.ММ.ГГГГ)
 2. Время рождения (если известно)
 3. Место рождения
 
-Пожалуйста, начните с ввода даты рождения.`;
-        await bot.sendMessage(chatId, greetingMessage);
-
-        // Сохраняем сообщение пользователя в базе
-        await saveMessageToDb(chatId, 'user', userMessage);
-
+Пожалуйста, начните с ввода даты рождения.`);
+        
+        // Сохраняем сообщение от бота в таблицу messages
+        await supabase.from('messages').insert([{
+          session_id: chatId,
+          role: 'bot',
+          content: `Здравствуйте! Я — София, ваш астрологический помощник. Для составления персонального прогноза мне потребуются: 1. Дата рождения (в формате ДД.ММ.ГГГГ) 2. Время рождения (если известно) 3. Место рождения Пожалуйста, начните с ввода даты рождения.`,
+          timestamp: new Date()
+        }]);
+        
         return res.status(200).end();
       }
 
@@ -90,11 +76,20 @@ module.exports = async (req, res) => {
       if (insertError) {
         console.error('Ошибка сохранения:', insertError);
         await bot.sendMessage(chatId, 'Произошла ошибка при сохранении данных. Попробуйте ещё раз.');
+
+        // Записываем ошибку в messages
+        await supabase.from('messages').insert([{
+          session_id: chatId,
+          role: 'bot',
+          content: 'Произошла ошибка при сохранении данных. Попробуйте ещё раз.',
+          timestamp: new Date()
+        }]);
+
         return res.status(200).end();
       }
 
       // После сохранения предлагаем выбрать тему
-      const topicMessage = `Спасибо! Ваши данные сохранены. 
+      await bot.sendMessage(chatId, `Спасибо! Ваши данные сохранены. 
 Выберите интересующую вас тему:
 1️⃣ Семья и отношения
 2️⃣ Здоровье
@@ -102,12 +97,16 @@ module.exports = async (req, res) => {
 4️⃣ Карьера
 5️⃣ Личностный рост
 
-Просто отправьте цифру от 1 до 5.`;
-      await bot.sendMessage(chatId, topicMessage);
+Просто отправьте цифру от 1 до 5.`);
 
-      // Сохраняем сообщение бота в базе
-      await saveMessageToDb(chatId, 'bot', topicMessage);
-
+      // Сохраняем сообщение от бота в таблицу messages
+      await supabase.from('messages').insert([{
+        session_id: chatId,
+        role: 'bot',
+        content: `Спасибо! Ваши данные сохранены. Выберите интересующую вас тему: 1️⃣ Семья и отношения 2️⃣ Здоровье 3️⃣ Финансы 4️⃣ Карьера 5️⃣ Личностный рост Просто отправьте цифру от 1 до 5.`,
+        timestamp: new Date()
+      }]);
+      
       return res.status(200).end();
     }
 
@@ -142,50 +141,81 @@ module.exports = async (req, res) => {
         const prediction = response.choices[0].message.content;
         await bot.sendMessage(chatId, prediction);
         
-        // Сохраняем сообщение бота в базе
-        await saveMessageToDb(chatId, 'bot', prediction);
-
+        // Сохраняем сообщение от бота в таблицу messages
+        await supabase.from('messages').insert([{
+          session_id: chatId,
+          role: 'bot',
+          content: prediction,
+          timestamp: new Date()
+        }]);
+        
         // Предлагаем выбрать новую тему
-        const newTopicMessage = `Хотите узнать о другой сфере жизни?
+        await bot.sendMessage(chatId, `Хотите узнать о другой сфере жизни?
 1️⃣ Семья
 2️⃣ Здоровье
 3️⃣ Финансы
 4️⃣ Карьера
 5️⃣ Личностный рост
 
-Или введите "стоп" для завершения.`;
-        await bot.sendMessage(chatId, newTopicMessage);
+Или введите "стоп" для завершения.`);
 
-        // Сохраняем сообщение бота в базе
-        await saveMessageToDb(chatId, 'bot', newTopicMessage);
+        // Сохраняем сообщение от бота в таблицу messages
+        await supabase.from('messages').insert([{
+          session_id: chatId,
+          role: 'bot',
+          content: `Хотите узнать о другой сфере жизни? 1️⃣ Семья 2️⃣ Здоровье 3️⃣ Финансы 4️⃣ Карьера 5️⃣ Личностный рост Или введите "стоп" для завершения.`,
+          timestamp: new Date()
+        }]);
 
         return res.status(200).end();
       } catch (error) {
         console.error('OpenAI Error:', error);
         await bot.sendMessage(chatId, 'Извините, возникла ошибка при генерации прогноза. Попробуйте позже.');
+
+        // Сохраняем сообщение об ошибке от бота
+        await supabase.from('messages').insert([{
+          session_id: chatId,
+          role: 'bot',
+          content: 'Извините, возникла ошибка при генерации прогноза. Попробуйте позже.',
+          timestamp: new Date()
+        }]);
+        
         return res.status(200).end();
       }
     }
 
     // 4. Если тема не выбрана - повторяем предложение
-    const repeatTopicMessage = `Пожалуйста, выберите тему:
+    await bot.sendMessage(chatId, `Пожалуйста, выберите тему:
 1️⃣ Семья и отношения
 2️⃣ Здоровье
 3️⃣ Финансы
 4️⃣ Карьера
 5️⃣ Личностный рост
 
-Отправьте цифру от 1 до 5.`;
-    await bot.sendMessage(chatId, repeatTopicMessage);
+Отправьте цифру от 1 до 5.`);
 
-    // Сохраняем сообщение бота в базе
-    await saveMessageToDb(chatId, 'bot', repeatTopicMessage);
+    // Сохраняем сообщение от бота в таблицу messages
+    await supabase.from('messages').insert([{
+      session_id: chatId,
+      role: 'bot',
+      content: `Пожалуйста, выберите тему: 1️⃣ Семья и отношения 2️⃣ Здоровье 3️⃣ Финансы 4️⃣ Карьера 5️⃣ Личностный рост Отправьте цифру от 1 до 5.`,
+      timestamp: new Date()
+    }]);
 
     return res.status(200).end();
 
   } catch (err) {
     console.error('❌ Global Error:', err);
     await bot.sendMessage(chatId, '⚠️ Произошла непредвиденная ошибка. Пожалуйста, попробуйте позже.');
+
+    // Сохраняем сообщение об ошибке от бота
+    await supabase.from('messages').insert([{
+      session_id: chatId,
+      role: 'bot',
+      content: '⚠️ Произошла непредвиденная ошибка. Пожалуйста, попробуйте позже.',
+      timestamp: new Date()
+    }]);
+
     return res.status(200).end();
   }
 };
