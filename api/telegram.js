@@ -27,7 +27,7 @@ module.exports = async (req, res) => {
   const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
 
   try {
-    // Проверка наличия сохраненных данных
+    // Проверяем, есть ли данные пользователя в базе
     const { data: existingProfile } = await supabase
       .from('user_profiles')
       .select('*')
@@ -35,7 +35,7 @@ module.exports = async (req, res) => {
       .single();
 
     if (!existingProfile) {
-      // Если профиль не найден, запрашиваем данные
+      // Если данные не сохранены, запрашиваем их
       if (!userMessage.match(/\d{2}\.\d{2}\.\d{4}/)) {
         const reply = `Здравствуйте! Я — София, эксперт по астрологии и эзотерике. Готова помочь вам. Пожалуйста, предоставьте мне следующие данные для составления прогноза:
         1. Дата рождения (в формате ДД.ММ.ГГГГ)
@@ -43,7 +43,7 @@ module.exports = async (req, res) => {
         3. Место рождения`;
         await bot.sendMessage(chatId, reply);
       } else {
-        // Логика для сохранения данных в профиль
+        // Логика для сохранения данных
         const birthdate = userMessage.match(/\d{2}\.\d{2}\.\d{4}/)[0]; 
         const birthtime = "07:00"; // По умолчанию
         const city = "Москва"; // По умолчанию
@@ -70,7 +70,7 @@ module.exports = async (req, res) => {
         } else {
           await bot.sendMessage(chatId, 'Спасибо за ваши данные! Я начала готовить ваш прогноз. Пожалуйста, подождите.');
 
-          // После сохранения данных, запрашиваем тему прогноза
+          // После сохранения данных, предлагаем выбрать тему прогноза
           const reply = `Ваши данные сохранены! Ожидайте, я готова составить для вас прогноз. Пожалуйста, уточните, на какую тему вы хотите получить прогноз? Вот несколько вариантов:
           1. Семья и отношения
           2. Здоровье
@@ -82,11 +82,11 @@ module.exports = async (req, res) => {
         }
       }
     } else {
-      // Если профиль уже есть, предлагаем выбор темы
+      // Если данные уже сохранены, предлагаем выбрать тему
       if (userMessage.match(/1|2|3|4|5/)) {
         let prediction = '';
 
-        // Логика генерации прогноза на основе выбранной темы
+        // Логика для генерации прогноза в зависимости от выбранной темы
         switch (userMessage.trim()) {
           case '1':
             prediction = 'Прогноз для темы "Семья и отношения"...';
@@ -111,7 +111,7 @@ module.exports = async (req, res) => {
         // Отправляем прогноз пользователю
         await bot.sendMessage(chatId, prediction);
 
-        // Для использования OpenAI API для генерации более глубокого прогноза
+        // Используем OpenAI для более глубокого прогноза
         try {
           const response = await openai.chat.completions.create({
             model: 'gpt-4',
