@@ -77,6 +77,14 @@ module.exports = async (req, res) => {
           4. Карьера и работа
           5. Личностный рост
           Пожалуйста, выберите одну тему или напишите свою.`;
+
+          // 💾 Сохраняем сообщение бота в Supabase
+          await supabase.from('messages').insert([{
+            session_id: chatId,
+            role: 'bot',
+            content: reply
+          }]);
+
           await bot.sendMessage(chatId, reply);
         } else {
           // Если пользователь выбрал тему, генерируем прогноз
@@ -104,6 +112,13 @@ module.exports = async (req, res) => {
               break;
           }
 
+          // 💾 Сохраняем сообщение бота в Supabase
+          await supabase.from('messages').insert([{
+            session_id: chatId,
+            role: 'bot',
+            content: prediction
+          }]);
+
           await bot.sendMessage(chatId, prediction);
 
           // Генерация более глубокого прогноза через OpenAI
@@ -114,6 +129,14 @@ module.exports = async (req, res) => {
             });
             
             const aiPrediction = response.choices[0].message.content.trim();
+            
+            // 💾 Сохраняем сообщение бота с результатом от OpenAI в Supabase
+            await supabase.from('messages').insert([{
+              session_id: chatId,
+              role: 'bot',
+              content: aiPrediction
+            }]);
+
             await bot.sendMessage(chatId, aiPrediction);
           } catch (error) {
             console.error('Ошибка при запросе OpenAI:', error);
@@ -125,6 +148,14 @@ module.exports = async (req, res) => {
         const reply = `Здравствуйте! Вы уже начали заполнение данных. Пожалуйста, уточните:
         1. Время рождения (если известно).
         2. Место рождения (если отличается от Москвы).`;
+
+        // 💾 Сохраняем сообщение бота в Supabase
+        await supabase.from('messages').insert([{
+          session_id: chatId,
+          role: 'bot',
+          content: reply
+        }]);
+
         await bot.sendMessage(chatId, reply);
       }
     } else {
@@ -134,6 +165,14 @@ module.exports = async (req, res) => {
         1. Дата рождения (в формате ДД.ММ.ГГГГ)
         2. Время рождения (если известно)
         3. Место рождения`;
+
+        // 💾 Сохраняем сообщение бота в Supabase
+        await supabase.from('messages').insert([{
+          session_id: chatId,
+          role: 'bot',
+          content: reply
+        }]);
+
         await bot.sendMessage(chatId, reply);
       } else {
         // Логика для сохранения данных в профиль
@@ -171,6 +210,14 @@ module.exports = async (req, res) => {
           4. Карьера и работа
           5. Личностный рост
           Пожалуйста, выберите одну тему или напишите свою.`;
+
+          // 💾 Сохраняем сообщение бота в Supabase
+          await supabase.from('messages').insert([{
+            session_id: chatId,
+            role: 'bot',
+            content: reply
+          }]);
+
           await bot.sendMessage(chatId, reply);
         }
       }
@@ -178,8 +225,4 @@ module.exports = async (req, res) => {
 
     res.status(200).end();
   } catch (err) {
-    console.error('❌ Ошибка:', err);
-    await bot.sendMessage(chatId, '⚠️ София временно недоступна. Попробуйте позже.');
-    res.status(200).end();
-  }
-};
+    console.error('
