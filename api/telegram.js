@@ -29,7 +29,7 @@ module.exports = async (req, res) => {
   const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
 
   try {
-    // Проверка на наличие данных пользователя в базе
+    // 💾 Проверка, есть ли уже сохранённые данные пользователя в базе
     const { data: userProfile } = await supabase
       .from('user_profiles')
       .select('*')
