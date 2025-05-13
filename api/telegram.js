@@ -28,22 +28,24 @@ module.exports = async (req, res) => {
   const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
 
   try {
-    // 💾 Сохраняем сообщение пользователя в Supabase (таблица messages)
-    console.log('💬 Пытаемся сохранить сообщение в Supabase:', {
+    // Сохраняем сообщение пользователя в Supabase
+    console.log('💬 Сохраняем сообщение в Supabase:', {
       session_id: chatId,
       role: 'user',
       content: userMessage
     });
 
-    const insertUser = await supabase.from('messages').insert([{
-      session_id: chatId,
-      role: 'user',
-      content: userMessage,
-    }]);
+    const insertUser = await supabase.from('messages').insert([
+      {
+        session_id: chatId,
+        role: 'user',
+        content: userMessage,
+      }
+    ]);
 
     console.log('📝 Результат вставки user:', insertUser);
 
-    // 📥 Загружаем историю из Supabase (таблица messages)
+    // Загружаем историю из Supabase
     const { data: history, error } = await supabase
       .from('messages')
       .select('role, content')
@@ -57,77 +59,50 @@ module.exports = async (req, res) => {
       console.log('📜 История загружена:', history);
     }
 
-    // Проверяем, есть ли профиль пользователя в таблице user_profiles
-    const { data: userProfile, error: userProfileError } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('session_id', chatId)
-      .single();
-
-    if (!userProfile) {
-      // Если нет профиля, запрашиваем данные
-      await bot.sendMessage(chatId, "Здравствуйте! Я София, эксперт по астрологии. Чтобы составить для вас персонализированный прогноз, мне нужно несколько данных. Пожалуйста, предоставьте свою дату рождения в формате ДД.ММ.ГГГГ, время рождения и место рождения.");
-      res.status(200).end();
-      return;
-    }
-
-    // Если профиль есть, проверяем, по какому вопросу человек хочет получить прогноз
-    if (userMessage.toLowerCase() === "по какому вопросу вы хотите прогноз?" || userMessage === "") {
-      await bot.sendMessage(chatId, "Пожалуйста, уточните, по какой теме вы хотите получить прогноз. Например, по личной жизни, карьере, здоровью и т.д.");
-      res.status(200).end();
-      return;
-    }
-
-    // Получаем данные пользователя из профиля
-    const { birthdate, birthtime, birthplace } = userProfile;
-
-    // Если данные все еще не собраны, запросим их
-    if (!birthdate || !birthtime || !birthplace) {
-      await bot.sendMessage(chatId, "Не все данные собраны. Пожалуйста, предоставьте свою дату, время и место рождения.");
-      res.status(200).end();
-      return;
-    }
-
-    // Если данные собраны, начинаем составление прогноза
-    const question = userMessage || "Общий прогноз"; // Тема может быть из последнего сообщения
-
-    const prompt = `На основе данных пользователя:
-Дата рождения: ${birthdate}
-Время рождения: ${birthtime}
-Место рождения: ${birthplace}
-
-Запрос: ${question}
-
-Пожалуйста, составь астрологический прогноз для пользователя.`;
-
     const messages = [
       { role: 'system', content: systemPrompt },
       ...(history || []),
-      { role: 'user', content: prompt }  // Добавляем новое сообщение пользователя
+      { role: 'user', content: userMessage }  // Добавляем новое сообщение пользователя
     ];
 
-    // 🤖 Запрашиваем ответ у OpenAI
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages,
-      temperature: 0.7,
-    });
+    // Если София ещё не знает данные пользователя, запрашиваем их
+    const { data: userData, error: userError } = await supabase
+      .from('user_profiles')
+      .select('birthdate, birthtime, birthplace')
+      .eq('session_id', chatId)
+      .single();  // Ожидаем один результат для одного пользователя
 
-    const reply = response.choices[0].message.content;
+    if (!userData) {
+      // Данных нет, запрашиваем их
+      await bot.sendMessage(chatId, 'Пожалуйста, предоставьте мне ваши данные для составления астрологического прогноза:\n1. Дата рождения (в формате ДД.ММ.ГГГГ)\n2. Время рождения\n3. Место рождения');
+      res.status(200).end();
+      return;
+    } else {
+      // Данные есть, продолжаем прогноз
+      const response = await openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages,
+        temperature: 0.7,
+      });
 
-    // 💾 Сохраняем ответ Софии в Supabase (таблица messages)
-    const insertAssistant = await supabase.from('messages').insert([{
-      session_id: chatId,
-      role: 'assistant',
-      content: reply,
-    }]);
+      const reply = response.choices[0].message.content;
 
-    console.log('🤖 Результат вставки assistant:', insertAssistant);
+      // Сохраняем ответ Софии в Supabase
+      const insertAssistant = await supabase.from('messages').insert([
+        {
+          session_id: chatId,
+          role: 'assistant',
+          content: reply,
+        }
+      ]);
 
-    await bot.sendMessage(chatId, reply);
-    res.status(200).end();
+      console.log('🤖 Результат вставки assistant:', insertAssistant);
+
+      await bot.sendMessage(chatId, reply);
+      res.status(200).end();
+    }
   } catch (err) {
-    console.error('❌ Ошибка:', err);
+    console.error('❌ GPT Ошибка:', err);
     await bot.sendMessage(chatId, '⚠️ София временно недоступна. Попробуйте позже.');
     res.status(200).end();
   }
