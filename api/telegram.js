@@ -103,7 +103,7 @@ module.exports = async (req, res) => {
         }
       }
     } else {
-      // Если профиль уже есть, предлагается выбор темы
+      // Если профиль уже есть, предлагаем выбор темы
       if (userMessage.match(/1|2|3|4|5/)) {
         let prediction = '';
 
