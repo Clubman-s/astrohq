@@ -5,10 +5,8 @@ const { supabase } = require('../lib/supabase');
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const OPENAI_KEY = process.env.OPENAI_KEY;
 
-const systemPrompt = `
-Ты — София, эксперт по астрологии и эзотерике. Ответь на вопросы глубоко, мягко, с лёгким вдохновением. Избегай сухих или формальных ответов. 
-Начни с того, чтобы представиться, объяснить свою роль и запросить данные пользователя для анализа (дату рождения, время и место).
-`;
+const systemPrompt = `Ты — София, эксперт по астрологии и эзотерике. Ответь на вопросы глубоко, мягко, с лёгким вдохновением. Избегай сухих или формальных ответов. 
+Начни с того, чтобы представиться, объяснить свою роль и запросить данные пользователя для анализа (дату рождения, время и место).`;
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
@@ -65,10 +63,9 @@ module.exports = async (req, res) => {
       .eq('session_id', chatId)
       .single();
 
-    // Если профиль существует, проверяем, есть ли все необходимые данные
     if (existingProfile) {
-      if (existingProfile.birthdate && existingProfile.birthtime && existingProfile.city) {
-        // Данные есть, проверяем тему прогноза
+      if (existingProfile.profile_complete) {
+        // Если профиль завершен, проверяем, есть ли выбранная тема для прогноза
         if (!userMessage.match(/1|2|3|4|5/)) {
           const reply = `Ваши данные уже сохранены! Ожидайте, я готова составить для вас прогноз. Пожалуйста, уточните, на какую тему вы хотите получить прогноз? Вот несколько вариантов:
           1. Семья и отношения
@@ -79,10 +76,9 @@ module.exports = async (req, res) => {
           Пожалуйста, выберите одну тему или напишите свою.`;
           await bot.sendMessage(chatId, reply);
         } else {
-          // Если пользователь выбрал тему, генерируем прогноз
-          const topic = userMessage.trim();
+          // Логика обработки выбранной темы
           let prediction = '';
-
+          const topic = userMessage.trim();
           switch (topic) {
             case '1':
               prediction = 'Прогноз для темы "Семья и отношения"...';
@@ -104,15 +100,16 @@ module.exports = async (req, res) => {
               break;
           }
 
+          // Отправляем прогноз пользователю
           await bot.sendMessage(chatId, prediction);
 
-          // Генерация более глубокого прогноза через OpenAI
+          // Для использования OpenAI API для генерации более глубокого прогноза
           try {
             const response = await openai.chat.completions.create({
               model: 'gpt-4',
               messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prediction }]
             });
-            
+
             const aiPrediction = response.choices[0].message.content.trim();
             await bot.sendMessage(chatId, aiPrediction);
           } catch (error) {
@@ -121,14 +118,14 @@ module.exports = async (req, res) => {
           }
         }
       } else {
-        // Если профиль есть, но данные неполные
+        // Если профиль не завершен, продолжаем запрашивать недостающие данные
         const reply = `Здравствуйте! Вы уже начали заполнение данных. Пожалуйста, уточните:
         1. Время рождения (если известно).
         2. Место рождения (если отличается от Москвы).`;
         await bot.sendMessage(chatId, reply);
       }
     } else {
-      // Если профиль не найден, продолжаем запрашивать данные
+      // Если профиль не найден, начинаем с запроса данных
       if (!userMessage.match(/\d{2}\.\d{2}\.\d{4}/)) {
         const reply = `Здравствуйте! Я — София, эксперт по астрологии и эзотерике. Готова помочь вам. Пожалуйста, предоставьте мне следующие данные для составления прогноза:
         1. Дата рождения (в формате ДД.ММ.ГГГГ)
@@ -150,6 +147,7 @@ module.exports = async (req, res) => {
           birthdate: formattedDate,
           birthtime,
           city,
+          profile_complete: true,  // Устанавливаем флаг завершения профиля
         };
 
         // Сохраняем профиль в базе данных
