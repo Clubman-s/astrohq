@@ -5,6 +5,24 @@ const { supabase } = require('../lib/supabase');
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const OPENAI_KEY = process.env.OPENAI_KEY;
 
+const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
+
+// Начальный промпт для нового пользователя
+const initialPrompt = `
+Привет! 😊 Я — София, астролог и проводник по тайнам твоего рождения.
+Чтобы составить точный прогноз, пожалуйста, напиши:
+
+1. 📅 Дату рождения (ДД.ММ.ГГГГ)
+2. ⏰ Время рождения (если знаешь)
+3. 🌍 Город или место рождения
+
+Как только будут данные — сразу приступим! 🔮
+`;
+
+function isValidDate(dateStr) {
+  return /\d{2}\.\d{2}\.\d{4}/.test(dateStr);
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).end();
@@ -21,42 +39,45 @@ module.exports = async (req, res) => {
   const userMessage = message.text.trim();
 
   const openai = new OpenAI({ apiKey: OPENAI_KEY });
-  const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
 
   try {
-    // 🧠 Проверяем наличие профиля
-    const { data: profile, error: profileError } = await supabase
+    // Загружаем профиль пользователя
+    const { data: profiles } = await supabase
       .from('user_profiles')
       .select('*')
-      .eq('chat_id', chatId)
-      .single();
+      .eq('session_id', chatId)
+      .limit(1);
 
-    // 📌 Если профиля нет
-    if (!profile || profileError) {
-      // 🗓 Проверяем, ввёл ли пользователь дату рождения
-      const dateRegex = /^(\d{2})\.(\d{2})\.(\d{4})$/;
-      const match = userMessage.match(dateRegex);
+    const profile = profiles?.[0];
 
-      if (!match) {
-        await bot.sendMessage(
-          chatId,
-          '✨ Привет! Чтобы составить астрологический разбор, напиши, пожалуйста, свою дату рождения в формате ДД.ММ.ГГГГ (например, 13.05.1985).'
-        );
-        return res.status(200).end();
+    // Если профиля нет — пытаемся извлечь данные из сообщения
+    if (!profile) {
+      let birthdateMatch = userMessage.match(/\d{2}\.\d{2}\.\d{4}/);
+      let timeMatch = userMessage.match(/\b(\d{1,2}:\d{2})\b/);
+      let placeMatch = userMessage.match(/(?:\d{2}\.\d{2}\.\d{4}|\d{1,2}:\d{2})\s*(.*?)$/);
+
+      if (birthdateMatch) {
+        const birthdate = birthdateMatch[0];
+        const birthtime = timeMatch ? timeMatch[0] : null;
+        const birthplace = placeMatch ? placeMatch[1].trim() : null;
+
+        await supabase.from('user_profiles').insert([
+          {
+            session_id: chatId,
+            birthdate,
+            birthtime,
+            birthplace
+          }
+        ]);
+
+        await bot.sendMessage(chatId, 'Спасибо, данные записаны ✅. Задай свой вопрос, и я посмотрю, что звезды говорят об этом. ✨');
+        res.status(200).end();
+        return;
+      } else {
+        await bot.sendMessage(chatId, initialPrompt);
+        res.status(200).end();
+        return;
       }
-
-      // ✅ Если ввёл дату — сохраняем
-      const formattedDate = `${match[3]}-${match[2]}-${match[1]}`;
-
-      await supabase.from('user_profiles').insert([
-        {
-          chat_id: chatId,
-          birthdate: formattedDate,
-        },
-      ]);
-
-      await bot.sendMessage(chatId, '🌟 Спасибо! Теперь задай любой вопрос — и я постараюсь дать тебе персонализированный ответ.');
-      return res.status(200).end();
     }
 
     // 💾 Сохраняем сообщение пользователя в Supabase
@@ -65,41 +86,36 @@ module.exports = async (req, res) => {
         session_id: chatId,
         role: 'user',
         content: userMessage,
-      },
+      }
     ]);
 
     // 📥 Загружаем историю из Supabase
-    const { data: history, error } = await supabase
+    const { data: history } = await supabase
       .from('messages')
       .select('role, content')
       .eq('session_id', chatId)
       .order('timestamp', { ascending: true })
       .limit(20);
 
-    if (error) {
-      console.error('❗ Ошибка при загрузке истории:', error);
-    }
-
-    // ✨ Формируем systemPrompt с датой рождения
     const systemPrompt = `
-Ты — София, профессиональный астролог с многолетним опытом. 
-Дата рождения пользователя: ${profile.birthdate}. 
-Используй ведическую и западную астрологию для анализа личности, жизненных периодов, судьбоносных событий. 
-Говори уверенно, избегай общих фраз и водянистости. 
-Объясняй всё простыми словами, можно немного с душой и юмором 🌟
+Ты — София, духовный астролог и проводник. Используй данные пользователя:
+- Дата рождения: ${profile.birthdate}
+- Время рождения: ${profile.birthtime || 'не указано'}
+- Место рождения: ${profile.birthplace || 'не указано'}
+
+Отвечай вдохновенно, глубоко и по существу. Избегай банальностей и общих фраз. Ты раскрываешь истину через натальную карту.
 `;
 
     const messages = [
       { role: 'system', content: systemPrompt },
       ...(history || []),
-      { role: 'user', content: userMessage },
+      { role: 'user', content: userMessage }
     ];
 
-    // 🤖 Запрашиваем ответ у OpenAI
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages,
-      temperature: 0.7,
+      temperature: 0.8,
     });
 
     const reply = response.choices[0].message.content;
@@ -110,14 +126,14 @@ module.exports = async (req, res) => {
         session_id: chatId,
         role: 'assistant',
         content: reply,
-      },
+      }
     ]);
 
     await bot.sendMessage(chatId, reply);
     res.status(200).end();
   } catch (err) {
-    console.error('❌ GPT Ошибка:', err);
-    await bot.sendMessage(chatId, '⚠️ София временно недоступна. Попробуй позже.');
+    console.error('❌ Ошибка:', err);
+    await bot.sendMessage(chatId, '⚠️ София временно недоступна. Попробуйте позже.');
     res.status(200).end();
   }
 };
