@@ -9,6 +9,25 @@ const systemPrompt = `
 Ты — София, эксперт по астрологии и эзотерике. Отвечай глубоко, мягко, с лёгким вдохновением. Избегай сухих или формальных ответов.
 `;
 
+// Функция для обработки времени, включая неформальные записи
+function processTime(inputTime) {
+  const timePatterns = [
+    { pattern: /около (\d{1,2})\s*(утра|вечера|дня|ночи)/i, replacement: '$1:00' }, // Пример: около 7 утра
+    { pattern: /(\d{1,2})\s*(утра|вечера|дня|ночи)/i, replacement: '$1:00' }, // Пример: 7 утра, 9 вечера
+    { pattern: /^(\d{1,2}):(\d{1,2})$/, replacement: '$1:$2' }, // Пример: 07:00 или 18:30
+    { pattern: /^(\d{1,2})$/, replacement: '$1:00' } // Пример: 7 -> 07:00
+  ];
+
+  for (let { pattern, replacement } of timePatterns) {
+    const match = inputTime.match(pattern);
+    if (match) {
+      return match[0].replace(pattern, replacement);
+    }
+  }
+
+  return '12:00'; // Если не найдено, возвращаем 12:00
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).end();
@@ -28,65 +47,42 @@ module.exports = async (req, res) => {
   const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
 
   try {
-    // 💾 Сохраняем сообщение пользователя в таблицу messages
-    console.log('💬 Пытаемся сохранить сообщение в таблицу messages:', {
+    // 💾 Сохраняем сообщение пользователя в Supabase
+    console.log('💬 Пытаемся сохранить сообщение в Supabase:', {
       session_id: chatId,
       role: 'user',
       content: userMessage
     });
 
-    const insertUserMessage = await supabase.from('messages').insert([{
+    const insertUser = await supabase.from('messages').insert([{
       session_id: chatId,
       role: 'user',
       content: userMessage,
     }]);
 
-    console.log('📝 Результат вставки user в messages:', insertUserMessage);
+    console.log('📝 Результат вставки user:', insertUser);
 
-    // 📥 Загружаем профиль из таблицы user_profiles
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('name, birthdate, birthtime, city')
+    // 📥 Загружаем историю из Supabase
+    const { data: history, error } = await supabase
+      .from('messages')
+      .select('role, content')
       .eq('session_id', chatId)
-      .single();
+      .order('timestamp', { ascending: true })
+      .limit(20);
 
-    if (profileError && profileError.code !== 'PGRST116') {
-      console.error('❗ Ошибка при загрузке профиля:', profileError);
+    if (error) {
+      console.error('❗ Ошибка при загрузке истории:', error);
     } else {
-      console.log('📜 Данные профиля пользователя:', userProfile);
+      console.log('📜 История загружена:', history);
     }
 
-    // Если данных профиля нет, просим пользователя предоставить их
-    if (!userProfile) {
-      await bot.sendMessage(chatId, 'Пожалуйста, предоставьте мне свои данные для составления астрологического прогноза:\n1. Дата рождения (в формате ДД.ММ.ГГГГ)\n2. Время рождения\n3. Место рождения');
-      return res.status(200).end();
-    }
-
-    // Если данные профиля есть, сохраняем их в таблицу user_profiles (если они новые)
-    if (userMessage.includes('Дата рождения') && !userProfile.birthdate) {
-      // Сохраняем данные в user_profiles
-      const [day, month, year] = userMessage.split(' ')[0].split('.');
-      const birthdate = `${year}-${month}-${day}`;
-      
-      await supabase.from('user_profiles').upsert([{
-        session_id: chatId,
-        birthdate: birthdate,
-        birthtime: '7:00', // пример, надо доработать на основе сообщений
-        city: 'Москва', // пример, нужно расширить
-      }]);
-
-      await bot.sendMessage(chatId, 'Благодарю за уточнение. Теперь у меня есть все необходимые данные для составления астрологического прогноза. Позвольте мне немного времени, чтобы подготовить информацию для вас.');
-
-      return res.status(200).end();
-    }
-
-    // Если данные профиля есть, продолжаем с ними
     const messages = [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Мне нужно рассчитать астрологический прогноз для следующей информации: \nДата рождения: ${userProfile.birthdate}\nВремя рождения: ${userProfile.birthtime}\nГород рождения: ${userProfile.city}` },
-      { role: 'user', content: userMessage }
+      ...(history || []),
+      { role: 'user', content: userMessage }  // Добавляем новое сообщение пользователя
     ];
 
+    // 🤖 Запрашиваем ответ у OpenAI
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages,
@@ -95,19 +91,42 @@ module.exports = async (req, res) => {
 
     const reply = response.choices[0].message.content;
 
-    // 💾 Сохраняем ответ Софии в таблицу messages
-    const insertAssistantMessage = await supabase.from('messages').insert([{
+    // Если это первый запрос на данные, то собираем информацию для профиля
+    if (userMessage.toLowerCase().includes('дата рождения') || userMessage.toLowerCase().includes('время рождения') || userMessage.toLowerCase().includes('место рождения')) {
+      const birthdate = "18.12.1970";  // Пример: здесь можно подставить фактические данные
+      const birthtime = processTime("примерно 7 утра");  // Пример обработки времени
+      const birthplace = "Москва";  // Пример: здесь подставьте место рождения
+
+      // 💾 Сохраняем данные в таблицу user_profiles
+      const { error: insertProfileError } = await supabase.from('user_profiles').upsert([{
+        session_id: chatId,
+        birthdate,
+        birthtime,
+        city: birthplace,
+      }]);
+
+      if (insertProfileError) {
+        console.error('❗ Ошибка при вставке в user_profiles:', insertProfileError);
+      } else {
+        console.log('✅ Данные пользователя успешно сохранены в user_profiles');
+      }
+
+      reply += `\n\nБлагодарю за уточнение. Теперь у меня есть все необходимые данные для составления астрологического прогноза. Позвольте мне немного времени, чтобы подготовить информацию для вас.`;
+    }
+
+    // 💾 Сохраняем ответ Софии в Supabase
+    const insertAssistant = await supabase.from('messages').insert([{
       session_id: chatId,
       role: 'assistant',
       content: reply,
     }]);
 
-    console.log('🤖 Результат вставки assistant в messages:', insertAssistantMessage);
+    console.log('🤖 Результат вставки assistant:', insertAssistant);
 
     await bot.sendMessage(chatId, reply);
     res.status(200).end();
   } catch (err) {
-    console.error('❌ Ошибка:', err);
+    console.error('❌ GPT Ошибка:', err);
     await bot.sendMessage(chatId, '⚠️ София временно недоступна. Попробуйте позже.');
     res.status(200).end();
   }
