@@ -27,7 +27,7 @@ module.exports = async (req, res) => {
   const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
 
   try {
-    // 💾 Сохраняем сообщение пользователя в Supabase
+    // Сохраняем сообщение пользователя в Supabase
     console.log('💬 Пытаемся сохранить сообщение в Supabase:', {
       session_id: chatId,
       role: 'user',
@@ -42,7 +42,7 @@ module.exports = async (req, res) => {
 
     console.log('📝 Результат вставки user:', insertUser);
 
-    // 📥 Загружаем историю из Supabase
+    // Загружаем историю из Supabase
     const { data: history, error } = await supabase
       .from('messages')
       .select('role, content')
