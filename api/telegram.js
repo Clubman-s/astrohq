@@ -86,7 +86,14 @@ module.exports = async (req, res) => {
       res.status(200).end();
       return;
     } else {
-      // Данные есть, продолжаем прогноз
+      // Если данные пользователя получены, проверяем, чтобы данные были в правильном формате
+      const { birthdate, birthtime, birthplace } = userData;
+      if (!birthdate || !birthtime || !birthplace) {
+        await bot.sendMessage(chatId, 'Для расчёта прогноза мне нужно больше данных: пожалуйста, уточните ваше время и место рождения.');
+        return;
+      }
+
+      // Если все данные получены, составляем прогноз
       const response = await openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
         messages,
