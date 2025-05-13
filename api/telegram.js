@@ -5,10 +5,8 @@ const { supabase } = require('../lib/supabase');
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const OPENAI_KEY = process.env.OPENAI_KEY;
 
-const systemPrompt = `
-Ты — София, эксперт по астрологии и эзотерике. Ответь на вопросы глубоко, мягко, с лёгким вдохновением. Избегай сухих или формальных ответов. 
-Начни с того, чтобы представиться, объяснить свою роль и запросить данные пользователя для анализа (дату рождения, время и место).
-`;
+const systemPrompt = `Ты — София, эксперт по астрологии и эзотерике. Ответь на вопросы глубоко, мягко, с лёгким вдохновением. Избегай сухих или формальных ответов. 
+Начни с того, чтобы представиться, объяснить свою роль и запросить данные пользователя для анализа (дату рождения, время и место).`;
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
@@ -78,11 +76,11 @@ module.exports = async (req, res) => {
           5. Личностный рост
           Пожалуйста, выберите одну тему или напишите свою.`;
 
-          // 💾 Сохраняем сообщение бота в Supabase
+          // Сохраняем сообщение от бота в Supabase
           await supabase.from('messages').insert([{
             session_id: chatId,
             role: 'bot',
-            content: reply
+            content: reply,
           }]);
 
           await bot.sendMessage(chatId, reply);
@@ -112,11 +110,11 @@ module.exports = async (req, res) => {
               break;
           }
 
-          // 💾 Сохраняем сообщение бота в Supabase
+          // Сохраняем сообщение от бота в Supabase
           await supabase.from('messages').insert([{
             session_id: chatId,
             role: 'bot',
-            content: prediction
+            content: prediction,
           }]);
 
           await bot.sendMessage(chatId, prediction);
@@ -130,11 +128,11 @@ module.exports = async (req, res) => {
             
             const aiPrediction = response.choices[0].message.content.trim();
             
-            // 💾 Сохраняем сообщение бота с результатом от OpenAI в Supabase
+            // Сохраняем сообщение от бота в Supabase
             await supabase.from('messages').insert([{
               session_id: chatId,
               role: 'bot',
-              content: aiPrediction
+              content: aiPrediction,
             }]);
 
             await bot.sendMessage(chatId, aiPrediction);
@@ -149,11 +147,11 @@ module.exports = async (req, res) => {
         1. Время рождения (если известно).
         2. Место рождения (если отличается от Москвы).`;
 
-        // 💾 Сохраняем сообщение бота в Supabase
+        // Сохраняем сообщение от бота в Supabase
         await supabase.from('messages').insert([{
           session_id: chatId,
           role: 'bot',
-          content: reply
+          content: reply,
         }]);
 
         await bot.sendMessage(chatId, reply);
@@ -166,18 +164,18 @@ module.exports = async (req, res) => {
         2. Время рождения (если известно)
         3. Место рождения`;
 
-        // 💾 Сохраняем сообщение бота в Supabase
+        // Сохраняем сообщение от бота в Supabase
         await supabase.from('messages').insert([{
           session_id: chatId,
           role: 'bot',
-          content: reply
+          content: reply,
         }]);
 
         await bot.sendMessage(chatId, reply);
       } else {
         // Логика для сохранения данных в профиль
         const birthdate = userMessage.match(/\d{2}\.\d{2}\.\d{4}/)[0]; 
-        const birthtime = "07:00"; // По умолчанию
+        const birthtime = "12:00"; // По умолчанию
         const city = "Москва"; // По умолчанию
 
         // Преобразуем дату в формат YYYY-MM-DD
@@ -211,11 +209,11 @@ module.exports = async (req, res) => {
           5. Личностный рост
           Пожалуйста, выберите одну тему или напишите свою.`;
 
-          // 💾 Сохраняем сообщение бота в Supabase
+          // Сохраняем сообщение от бота в Supabase
           await supabase.from('messages').insert([{
             session_id: chatId,
             role: 'bot',
-            content: reply
+            content: reply,
           }]);
 
           await bot.sendMessage(chatId, reply);
@@ -225,4 +223,8 @@ module.exports = async (req, res) => {
 
     res.status(200).end();
   } catch (err) {
-    console.error('
+    console.error('❌ Ошибка:', err);
+    await bot.sendMessage(chatId, '⚠️ София временно недоступна. Попробуйте позже.');
+    res.status(200).end();
+  }
+};
