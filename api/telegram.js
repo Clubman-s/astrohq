@@ -72,6 +72,10 @@ module.exports = async (req, res) => {
       const birthtime = "07:00"; // По умолчанию, если время не указано
       const city = "Москва"; // По умолчанию или из текста, если место указано
 
+      // Преобразуем дату в формат YYYY-MM-DD
+      const [day, month, year] = birthdate.split('.');
+      const formattedDate = `${year}-${month}-${day}`;
+
       // Пытаемся найти профиль пользователя
       const { data: existingProfile } = await supabase
         .from('user_profiles')
@@ -81,7 +85,7 @@ module.exports = async (req, res) => {
 
       const userProfileData = {
         session_id: chatId,
-        birthdate,
+        birthdate: formattedDate,
         birthtime,
         city,
       };
