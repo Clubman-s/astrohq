@@ -28,7 +28,36 @@ module.exports = async (req, res) => {
   const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
 
   try {
-    // Проверяем, есть ли у пользователя профиль в базе данных
+    // 💾 Сохраняем сообщение пользователя в Supabase (таблица messages)
+    console.log('💬 Пытаемся сохранить сообщение в Supabase:', {
+      session_id: chatId,
+      role: 'user',
+      content: userMessage
+    });
+
+    const insertUser = await supabase.from('messages').insert([{
+      session_id: chatId,
+      role: 'user',
+      content: userMessage,
+    }]);
+
+    console.log('📝 Результат вставки user:', insertUser);
+
+    // 📥 Загружаем историю из Supabase (таблица messages)
+    const { data: history, error } = await supabase
+      .from('messages')
+      .select('role, content')
+      .eq('session_id', chatId)
+      .order('timestamp', { ascending: true })
+      .limit(20);
+
+    if (error) {
+      console.error('❗ Ошибка при загрузке истории:', error);
+    } else {
+      console.log('📜 История загружена:', history);
+    }
+
+    // Проверяем, есть ли профиль пользователя в таблице user_profiles
     const { data: userProfile, error: userProfileError } = await supabase
       .from('user_profiles')
       .select('*')
@@ -73,7 +102,8 @@ module.exports = async (req, res) => {
 
     const messages = [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: prompt }
+      ...(history || []),
+      { role: 'user', content: prompt }  // Добавляем новое сообщение пользователя
     ];
 
     // 🤖 Запрашиваем ответ у OpenAI
@@ -85,7 +115,7 @@ module.exports = async (req, res) => {
 
     const reply = response.choices[0].message.content;
 
-    // 💾 Сохраняем ответ Софии в Supabase
+    // 💾 Сохраняем ответ Софии в Supabase (таблица messages)
     const insertAssistant = await supabase.from('messages').insert([{
       session_id: chatId,
       role: 'assistant',
