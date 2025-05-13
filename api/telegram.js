@@ -2,13 +2,15 @@ const { OpenAI } = require('openai');
 const TelegramBot = require('node-telegram-bot-api');
 const { supabase } = require('../lib/supabase');
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const OPENAI_KEY = process.env.OPENAI_KEY;
-
-const systemPrompt = `
-Ты — София, эксперт по астрологии и эзотерике. Отвечай глубоко, мягко, с лёгким вдохновением. Избегай сухих или формальных ответов. 
-Начни с того, чтобы представиться, объяснить свою роль и запросить данные пользователя для анализа (дату рождения, время и место).
-`;
+// Функция для приведения даты в формат YYYY-MM-DD
+const formatDate = (dateString) => {
+  const dateParts = dateString.split('.');
+  if (dateParts.length === 3) {
+    const [day, month, year] = dateParts;
+    return `${year}-${month}-${day}`; // Преобразуем в формат YYYY-MM-DD
+  }
+  return null; // Если дата некорректная, возвращаем null
+};
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
@@ -67,24 +69,30 @@ module.exports = async (req, res) => {
       3. Место рождения`;
       await bot.sendMessage(chatId, reply);
     } else {
-      // Если данные получены, сохраняем в user_profiles
-      const userProfileData = {
-        session_id: chatId,
-        birthdate: userMessage.match(/\d{2}\.\d{2}\.\d{4}/)[0], // дата
-        // Дополнительно можно проверить время и место рождения, если есть
-        // Пример обработки времени и места
-        birthtime: "07:00", // По умолчанию, если не указано время
-        city: "Москва" // По умолчанию или из текста, если место указано
-      };
+      // Преобразуем дату в нужный формат
+      const formattedDate = formatDate(userMessage.match(/\d{2}\.\d{2}\.\d{4}/)[0]);
 
-      const { error: profileError } = await supabase.from('user_profiles').upsert([userProfileData]);
+      if (formattedDate) {
+        // Если дата валидна, сохраняем в user_profiles
+        const userProfileData = {
+          session_id: chatId,
+          birthdate: formattedDate, // Дата в формате YYYY-MM-DD
+          // Дополнительно можно проверить время и место рождения, если есть
+          birthtime: "07:00", // По умолчанию, если не указано время
+          city: "Москва" // По умолчанию или из текста, если место указано
+        };
 
-      if (profileError) {
-        console.error('Ошибка при сохранении профиля:', profileError);
-        await bot.sendMessage(chatId, 'Что-то пошло не так, не удалось сохранить ваши данные.');
+        const { error: profileError } = await supabase.from('user_profiles').upsert([userProfileData]);
+
+        if (profileError) {
+          console.error('Ошибка при сохранении профиля:', profileError);
+          await bot.sendMessage(chatId, 'Что-то пошло не так, не удалось сохранить ваши данные.');
+        } else {
+          await bot.sendMessage(chatId, 'Спасибо за ваши данные! Я начала готовить ваш прогноз. Пожалуйста, подождите.');
+          // Теперь можно продолжить обработку данных
+        }
       } else {
-        await bot.sendMessage(chatId, 'Спасибо за ваши данные! Я начала готовить ваш прогноз. Пожалуйста, подождите.');
-        // Теперь можно продолжить обработку данных
+        await bot.sendMessage(chatId, 'Ваш формат даты некорректен. Пожалуйста, укажите дату в формате ДД.ММ.ГГГГ.');
       }
     }
 
