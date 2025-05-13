@@ -27,28 +27,7 @@ module.exports = async (req, res) => {
   const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
 
   try {
-    // 💾 Сохраняем сообщение пользователя в Supabase
-    const insertUser = await supabase.from('messages').insert([{
-      session_id: chatId,
-      role: 'user',
-      content: userMessage,
-    }]);
-
-    // 📥 Загружаем историю из Supabase
-    const { data: history, error } = await supabase
-      .from('messages')
-      .select('role, content')
-      .eq('session_id', chatId)
-      .order('timestamp', { ascending: true })
-      .limit(20);
-
-    if (error) {
-      console.error('❗ Ошибка при загрузке истории:', error);
-    } else {
-      console.log('📜 История загружена:', history);
-    }
-
-    // Проверяем наличие уже сохранённого профиля в базе данных
+    // Проверка наличия сохраненных данных
     const { data: existingProfile } = await supabase
       .from('user_profiles')
       .select('*')
@@ -56,7 +35,7 @@ module.exports = async (req, res) => {
       .single();
 
     if (!existingProfile) {
-      // Если профиля нет, запрашиваем данные
+      // Если профиль не найден, запрашиваем данные
       if (!userMessage.match(/\d{2}\.\d{2}\.\d{4}/)) {
         const reply = `Здравствуйте! Я — София, эксперт по астрологии и эзотерике. Готова помочь вам. Пожалуйста, предоставьте мне следующие данные для составления прогноза:
         1. Дата рождения (в формате ДД.ММ.ГГГГ)
