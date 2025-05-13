@@ -23,7 +23,7 @@ module.exports = async (req, res) => {
   }
 
   const chatId = message.chat.id.toString();
-  const userMessage = message.text;
+  const userMessage = message.text.trim();
 
   const openai = new OpenAI({ apiKey: OPENAI_KEY });
   const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
@@ -59,33 +59,15 @@ module.exports = async (req, res) => {
     }
 
     // Логика для запросов данных, если их еще нет
-    const { data: userProfile } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('session_id', chatId)
-      .single();
-
-    if (!userProfile) {
-      // Если профиль не найден, запросим данные
+    if (!userMessage.match(/\d{2}\.\d{2}\.\d{4}/)) {
+      // Если дата не указана, запросим данные
       const reply = `Здравствуйте! Я — София, эксперт по астрологии и эзотерике. Готова помочь вам. Пожалуйста, предоставьте мне следующие данные для составления прогноза:
       1. Дата рождения (в формате ДД.ММ.ГГГГ)
       2. Время рождения (если известно)
       3. Место рождения`;
       await bot.sendMessage(chatId, reply);
     } else {
-      // Если профиль существует, сразу переходим к выбору темы
-      const reply = `Ваши данные уже сохранены! Ожидайте, я готова составить для вас прогноз. Пожалуйста, уточните, на какую тему вы хотите получить прогноз? Вот несколько вариантов:
-      1. Семья и отношения
-      2. Здоровье
-      3. Финансовое положение
-      4. Карьера и работа
-      5. Личностный рост
-      Пожалуйста, выберите одну тему или напишите свою.`;
-      await bot.sendMessage(chatId, reply);
-    }
-
-    // Если данные пользователя получены, продолжаем их обработку
-    if (userMessage.match(/\d{2}\.\d{2}\.\d{4}/)) {
+      // Если данные получены, сохраняем в user_profiles
       const birthdate = userMessage.match(/\d{2}\.\d{2}\.\d{4}/)[0]; // дата
       const birthtime = "07:00"; // По умолчанию, если время не указано
       const city = "Москва"; // По умолчанию или из текста, если место указано
@@ -95,6 +77,12 @@ module.exports = async (req, res) => {
       const formattedDate = `${year}-${month}-${day}`;
 
       // Пытаемся найти профиль пользователя
+      const { data: existingProfile } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('session_id', chatId)
+        .single();
+
       const userProfileData = {
         session_id: chatId,
         birthdate: formattedDate,
@@ -104,7 +92,7 @@ module.exports = async (req, res) => {
 
       let profileError;
 
-      if (userProfile) {
+      if (existingProfile) {
         // Если профиль уже существует, обновляем его
         const { error: updateError } = await supabase
           .from('user_profiles')
@@ -127,16 +115,37 @@ module.exports = async (req, res) => {
       } else {
         await bot.sendMessage(chatId, 'Спасибо за ваши данные! Я начала готовить ваш прогноз. Пожалуйста, подождите.');
 
-        // Запрос на тему
+        // Запрос на тему прогноза
         const reply = `Ваши данные сохранены! Ожидайте, я готова составить для вас прогноз. Пожалуйста, уточните, на какую тему вы хотите получить прогноз? Вот несколько вариантов:
-        1. Семья и отношения
-        2. Здоровье
-        3. Финансовое положение
-        4. Карьера и работа
-        5. Личностный рост
-        Пожалуйста, выберите одну тему или напишите свою.`;
+1. Семья и отношения
+2. Здоровье
+3. Финансовое положение
+4. Карьера и работа
+5. Личностный рост
+Пожалуйста, выберите одну тему или напишите свою.`;
         await bot.sendMessage(chatId, reply);
       }
+    }
+
+    // Обработка выбора темы
+    if (['1', '2', '3', '4', '5'].includes(userMessage)) {
+      // Генерация прогноза по теме
+      const theme = {
+        '1': 'Семья и отношения',
+        '2': 'Здоровье',
+        '3': 'Финансовое положение',
+        '4': 'Карьера и работа',
+        '5': 'Личностный рост',
+      }[userMessage];
+
+      const openaiResponse = await openai.completions.create({
+        model: 'text-davinci-003',
+        prompt: `Предсказание по теме: ${theme}. Пользователь: ${chatId}`,
+        max_tokens: 200,
+      });
+
+      const prediction = openaiResponse.choices[0].text.trim();
+      await bot.sendMessage(chatId, `Прогноз по теме "${theme}":\n\n${prediction}`);
     }
 
     res.status(200).end();
