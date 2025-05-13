@@ -77,9 +77,48 @@ module.exports = async (req, res) => {
         Пожалуйста, выберите одну тему или напишите свою.`;
         await bot.sendMessage(chatId, reply);
       } else {
-        // Если пользователь выбрал тему, продолжаем работу с прогнозом
-        await bot.sendMessage(chatId, 'Спасибо за выбор темы! Готовлю ваш прогноз...');
-        // Здесь будет логика для формирования прогноза на основе выбранной темы
+        // Если пользователь выбрал тему, генерируем прогноз
+        const topic = userMessage.trim();
+        let prediction = '';
+
+        // Здесь будет логика генерации прогноза на основе темы
+        switch (topic) {
+          case '1':
+            prediction = 'Прогноз для темы "Семья и отношения"...';
+            break;
+          case '2':
+            prediction = 'Прогноз для темы "Здоровье"...';
+            break;
+          case '3':
+            prediction = 'Прогноз для темы "Финансовое положение"...';
+            break;
+          case '4':
+            prediction = 'Прогноз для темы "Карьера и работа"...';
+            break;
+          case '5':
+            prediction = 'Прогноз для темы "Личностный рост"...';
+            break;
+          default:
+            prediction = 'Пожалуйста, уточните правильную тему.';
+            break;
+        }
+
+        // Отправляем прогноз пользователю
+        await bot.sendMessage(chatId, prediction);
+
+        // Для использования OpenAI API для генерации более глубокого прогноза
+        try {
+          const response = await openai.chat.completions.create({
+            model: 'gpt-4',
+            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prediction }]
+          });
+          
+          const aiPrediction = response.choices[0].message.content.trim();
+          await bot.sendMessage(chatId, aiPrediction);
+        } catch (error) {
+          console.error('Ошибка при запросе OpenAI:', error);
+          await bot.sendMessage(chatId, 'Возникла ошибка при создании прогноза. Попробуйте позже.');
+        }
       }
     } else {
       // Если профиль не найден, продолжаем запрашивать данные
