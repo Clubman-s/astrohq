@@ -28,19 +28,11 @@ module.exports = async (req, res) => {
 
   try {
     // 💾 Сохраняем сообщение пользователя в Supabase
-    console.log('💬 Пытаемся сохранить сообщение в Supabase:', {
-      session_id: chatId,
-      role: 'user',
-      content: userMessage
-    });
-
     const insertUser = await supabase.from('messages').insert([{
       session_id: chatId,
       role: 'user',
       content: userMessage,
     }]);
-
-    console.log('📝 Результат вставки user:', insertUser);
 
     // 📥 Загружаем историю из Supabase
     const { data: history, error } = await supabase
@@ -65,7 +57,7 @@ module.exports = async (req, res) => {
 
     if (existingProfile) {
       if (existingProfile.birthdate && existingProfile.birthtime && existingProfile.city) {
-        // Если все данные есть, запросим тему прогноза
+        // Если все данные есть, запрашиваем тему прогноза
         if (!userMessage.match(/1|2|3|4|5/)) {
           const reply = `Ваши данные уже сохранены! Ожидайте, я готова составить для вас прогноз. Пожалуйста, уточните, на какую тему вы хотите получить прогноз? Вот несколько вариантов:
           1. Семья и отношения
