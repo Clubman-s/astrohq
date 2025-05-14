@@ -27,18 +27,21 @@ module.exports = async (req, res) => {
   const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
 
   try {
+    // Сохраняем сообщение пользователя
     await supabase.from('messages').insert([{
       session_id: chatId,
       role: 'user',
       content: userMessage,
     }]);
 
+    // Проверяем наличие профиля (только для данных рождения)
     const { data: existingProfile } = await supabase
       .from('user_profiles')
       .select('*')
       .eq('session_id', chatId)
       .single();
 
+    // Загружаем историю сообщений
     const { data: history } = await supabase
       .from('messages')
       .select('role, content')
@@ -46,8 +49,8 @@ module.exports = async (req, res) => {
       .order('timestamp', { ascending: true });
 
     const lastBotMessage = [...history].reverse().find(m => m.role === 'bot')?.content || '';
-    const isAskingTopic = lastBotMessage.includes('на какую тему вы хотите получить прогноз');
-    const isAskingData = lastBotMessage.includes('предоставьте мне следующие данные');
+    const isAskingTopic = lastBotMessage.startsWith('Здравствуйте! Я — София, эксперт по астрологии. На какую тему');
+    const isAskingData = lastBotMessage.includes('Теперь укажите');
 
     if (!existingProfile) {
       if (!isAskingTopic && !isAskingData) {
@@ -57,17 +60,15 @@ module.exports = async (req, res) => {
         3. Финансы
         4. Карьера
         5. Личностный рост`;
-        
+
         await supabase.from('messages').insert([{
           session_id: chatId,
           role: 'bot',
           content: reply,
         }]);
         await bot.sendMessage(chatId, reply);
-      } 
+      }
       else if (isAskingTopic && ['1', '2', '3', '4', '5'].includes(userMessage.trim())) {
-        const selectedTopic = userMessage.trim();
-
         const reply = `Отлично! Теперь укажите:
         1. Дата рождения (ДД.ММ.ГГГГ)
         2. Время рождения (если известно)
@@ -97,7 +98,7 @@ module.exports = async (req, res) => {
           }
 
           let city = "Москва";
-          const cityMatch = userMessage.match(/место[:\s]*([^\d]+)/i) || 
+          const cityMatch = userMessage.match(/место[:\s]*([^\d]+)/i) ||
                             userMessage.match(/город[:\s]*([^\d]+)/i);
           if (cityMatch) city = cityMatch[1].trim();
 
@@ -108,8 +109,8 @@ module.exports = async (req, res) => {
             city
           }]);
 
-          const topicMessage = history.find(m => 
-            m.role === 'user' && m.content.match(/1|2|3|4|5/)
+          const topicMessage = history.find(m =>
+            m.role === 'user' && m.content.match(/^[1-5]$/)
           );
           const selectedTopic = topicMessage?.content.trim() || '1';
 
