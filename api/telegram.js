@@ -106,15 +106,15 @@ module.exports = async (req, res) => {
             const [day, month, year] = birthdate.split('.');
             const formattedDate = `${year}-${month}-${day}`;
 
-            let birthtime = "12:00";
-            const timeMatch = userMessage.match(/(\d{1,2})(?::(\d{2}))?(?:\s*(утра|вечера|часов|часа)?)?/);
-            if (timeMatch) {
-              let hours = parseInt(timeMatch[1]);
-              const minutes = timeMatch[2] ? timeMatch[2] : "00";
-              if (timeMatch[3]?.includes('вечера') && hours < 12) hours += 12;
-              birthtime = `${hours.toString().padStart(2, '0')}:${minutes}`;
-            }
-
+            let birthtime = "12:00"; // значение по умолчанию, если время не указано
+const timeMatch = userMessage.match(/(\d{1,2})(?::(\d{2}))?(?:\s*(утра|вечера|часов|часа)?)?/);
+if (timeMatch) {
+  let hours = parseInt(timeMatch[1]);
+  const minutes = timeMatch[2] ? timeMatch[2] : "00";
+  if (timeMatch[3]?.includes('вечера') && hours < 12) hours += 12;
+  if (timeMatch[3]?.includes('утра') && hours === 12) hours = 0; // полночь
+  birthtime = `${hours.toString().padStart(2, '0')}:${minutes}`;
+}
             let city = "Москва";
             const cityMatch = userMessage.match(/место[:\s]*([^\d]+)/i) ||
                               userMessage.match(/город[:\s]*([^\d]+)/i);
