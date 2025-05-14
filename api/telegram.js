@@ -44,7 +44,7 @@ module.exports = async (req, res) => {
       .eq('session_id', chatId)
       .order('timestamp', { ascending: true });
 
-    const lastBotMessage = history?.slice().reverse().find(m => m.role === 'bot')?.content || '';
+    const lastBotMessage = history?.reverse()?.find(m => m.role === 'bot')?.content || '';
     const isAskingTopic = lastBotMessage.includes('на какую тему вы хотите получить прогноз');
     const isAskingData = lastBotMessage.includes('предоставьте мне следующие данные');
 
@@ -56,14 +56,14 @@ module.exports = async (req, res) => {
         3. Финансы
         4. Карьера
         5. Личностный рост`;
-        
+
         await supabase.from('messages').insert([{
           session_id: chatId,
           role: 'bot',
           content: reply,
         }]);
         await bot.sendMessage(chatId, reply);
-      } 
+      }
       else if (isAskingTopic && userMessage.match(/1|2|3|4|5/)) {
         const reply = `Отлично! Теперь укажите:
         1. Дата рождения (ДД.ММ.ГГГГ)
@@ -85,10 +85,11 @@ module.exports = async (req, res) => {
           const formattedDate = `${year}-${month}-${day}`;
 
           let birthtime = "12:00";
-          const timeMatch = userMessage.match(/(\d{1,2})(?::(\d{2}))?(?:\s*(утра|вечера|часов|часа)?)?/);
+          const timeMatch = userMessage.match(/(\d{1,2})(?::(\d{2}))?(?:\s*(утра|вечера|часов|часа)?)/);
           if (timeMatch) {
             let hours = parseInt(timeMatch[1]);
             const minutes = timeMatch[2] ? timeMatch[2] : "00";
+
             if (timeMatch[3]?.includes('вечера') && hours < 12) hours += 12;
             birthtime = `${hours.toString().padStart(2, '0')}:${minutes}`;
           }
@@ -119,7 +120,6 @@ module.exports = async (req, res) => {
           };
           const topicName = topicMap[selectedTopic] || selectedTopic;
 
-          // 🎯 Новый prompt
           const userPrompt = `
 Данные пользователя:
 
@@ -147,7 +147,7 @@ module.exports = async (req, res) => {
           });
 
           const prediction = response.choices[0].message.content;
-          
+
           await supabase.from('messages').insert([{
             session_id: chatId,
             role: 'bot',
