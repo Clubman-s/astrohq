@@ -164,7 +164,7 @@ module.exports = async (req, res) => {
 Помни, что каждый прогноз должен быть уникальным и адаптированным к индивидуальной ситуации. Ответ должен быть мягким, с лёгким вдохновением, чтобы помочь пользователю почувствовать уверенность в будущем.`;
 
             const response = await openai.chat.completions.create({
-              model: 'gpt-3.5-turbo',
+              model: 'gpt-4o-mini',
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: prompt }
